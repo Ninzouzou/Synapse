@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Synapse - Entraînement Cérébral</title>
+    <style>
+        :root {
+            --bg-color: #0b0f19; --card-bg: #131b2e; --border-color: #1e293b;
+            --text-main: #f8fafc; --text-muted: #94a3b8;
+            --accent: #38bdf8; --accent-hover: #0ea5e9;
+            --danger: #f43f5e; --success: #22c55e; --warning: #f59e0b;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background-color: var(--bg-color); color: var(--text-main); display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        
+        #app {
+            width: 100%; max-width: 480px; height: 100vh; max-height: 900px;
+            background-color: var(--bg-color); display: flex; flex-direction: column;
+            position: relative; overflow: hidden; border-left: 1px solid var(--border-color); border-right: 1px solid var(--border-color);
+        }
+        @media (min-width: 481px) { #app { border-radius: 24px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); border: 1px solid var(--border-color); } }
+
+        header { padding: 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); }
+        .logo { font-size: 1.25rem; font-weight: 700; }
+        .stats-badge { display: flex; gap: 12px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); }
+        .stat-item { display: flex; align-items: center; gap: 4px; background: var(--card-bg); padding: 6px 10px; border-radius: 20px; border: 1px solid var(--border-color); }
+        .stat-item span { color: var(--accent); }
+
+        .content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+        h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 4px; }
+        p.subtitle { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px; }
+
+        .card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 20px; cursor: pointer; transition: all 0.2s ease; }
+        .card:active { transform: scale(0.98); }
+        .card-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 6px; color: var(--text-main); display: flex; justify-content: space-between; align-items: center; }
+        .card-desc { font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+        .btn { background-color: var(--accent); color: #0b0f19; border: none; border-radius: 12px; padding: 14px 20px; font-size: 1rem; font-weight: 600; cursor: pointer; width: 100%; transition: background-color 0.2s; }
+        .btn:hover { background-color: var(--accent-hover); }
+        .btn-secondary { background-color: transparent; border: 1px solid var(--border-color); color: var(--text-main); }
+        
+        input[type="text"] { width: 100%; background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px 16px; color: var(--text-main); font-size: 1.1rem; outline: none; margin-bottom: 15px; }
+        input:focus { border-color: var(--accent); }
+
+        /* SÉANCE STYLES */
+        .phase-indicator { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); font-weight: 700; margin-bottom: 10px; }
+        .question-box { font-size: 1.2rem; font-weight: 500; line-height: 1.5; margin-bottom: 20px; }
+        .feedback-box { background-color: var(--card-bg); border-left: 4px solid var(--accent); padding: 16px; border-radius: 0 12px 12px 0; margin-bottom: 20px; font-size: 0.95rem; line-height: 1.4; }
+        .feedback-box.correct { border-left-color: var(--success); }
+        .feedback-box.incorrect { border-left-color: var(--danger); }
+
+        /* CANVAS BROUILLON */
+        .canvas-container { position: relative; width: 100%; height: 160px; background-color: #000; border: 1px dashed var(--border-color); border-radius: 12px; margin-bottom: 15px; touch-action: none; }
+        .canvas-hint { position: absolute; top: 10px; left: 10px; font-size: 0.75rem; color: #555; pointer-events: none; }
+        canvas { width: 100%; height: 100%; border-radius: 12px; }
+
+        /* MEMORY GAME */
+        .memory-pair { background: var(--card-bg); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; margin-bottom: 8px; font-size: 0.9rem; border-left: 3px solid var(--warning);}
+        .badge-tag { font-size: 0.75rem; background: rgba(56, 189, 248, 0.1); color: var(--accent); padding: 4px 8px; border-radius: 6px; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header>
+            <div class="logo">Synapse</div>
+            <div class="stats-badge">
+                <div class="stat-item">🔥 <span id="streak-count">1</span>j</div>
+                <div class="stat-item">⚡ <span id="score-count">0</span></div>
+            </div>
+        </header>
+        <div class="content" id="main-content"></div>
+    </div>
+
+    <script>
+        // DONNÉES DE SECOURS (Si l'API Gemini n'est pas encore connectée)
+        let dailyData = {
+            culture: [
+                { q: "Quelle capitale d'Amérique du Sud est la plus haute du monde ?", a: "la paz", exp: "La Paz (Bolivie) culmine à 3 640 m. Elle est située sur l'Altiplano, dans la cordillère des Andes." }
+            ],
+            plume: [
+                { phrase: "Ils se sont succédés à ce poste.", mot_faux: "succédés", mot_correct: "succédé", regle: "Le verbe se succéder est intransitif (succéder à qui ?), le participe passé ne s'accorde donc jamais." }
+            ],
+            memoire: [
+                { date: "1515", fait: "Bataille de Marignan" },
+                { date: "1492", fait: "Découverte de l'Amérique" },
+                { date: "1789", fait: "Prise de la Bastille" }
+            ]
+        };
+
+        let state = {
+            screen: 'home', score: 0, streak: 1, sessionPhase: 0, 
+            questionsQueue: [], currentQ: null, feedback: null, revisionsList: [], memoryPairs: []
+        };
+
+        // CHARGEMENT API
+        async function loadDailyData() {
+            try {
+                // Dé-commente cette ligne quand l'API Vercel sera prête
+                // const res = await fetch('/api/daily'); 
+                // dailyData = await res.json();
+            } catch (e) { console.log("Utilisation des données locales."); }
+            render();
+        }
+
+        function render() {
+            const container = document.getElementById('main-content');
+            document.getElementById('score-count').innerText = state.score;
+            document.getElementById('streak-count').innerText = state.streak;
+            
+            if(state.screen === 'home') renderHome(container);
+            else if(state.screen === 'session') renderSession(container);
+            else if(state.screen === 'memory_learn') renderMemoryLearn(container);
+        }
+
+        function renderHome(container) {
+            container.innerHTML = `
+                <div><h1>Synapse</h1><p class="subtitle">Ton rituel quotidien.</p></div>
+                <div class="card" onclick="startDailySession()">
+                    <div class="card-title">Séance Quotidienne <span class="badge-tag">15 min</span></div>
+                    <div class="card-desc">1. Culture (IA)<br>2. Défi Maths<br>3. La Plume<br>4. Consolidation</div>
+                </div>
+                <div class="grid-2">
+                    <div class="card"><div class="card-title">Mini-Jeux</div></div>
+                    <div class="card"><div class="card-title">Révisions</div><div class="card-desc">${state.revisionsList.length} pièges</div></div>
+                </div>
+            `;
+        }
+
+        // --- SESSION LOGIC ---
+        function startDailySession() {
+            state.screen = 'session';
+            startPhase(1); 
+        }
+
+        function startPhase(phaseNum) {
+            state.sessionPhase = phaseNum;
+            state.feedback = null;
+            state.questionsQueue = [];
+
+            if(phaseNum === 1) { // 1. CULTURE
+                state.questionsQueue = [...dailyData.culture];
+                nextQuestion();
+            } 
+            else if(phaseNum === 2) { // 2. MATHS
+                for(let i=0; i<3; i++) {
+                    const a = Math.floor(Math.random() * 50) + 10;
+                    const b = Math.floor(Math.random() * 50) + 10;
+                    state.questionsQueue.push({ q: `Calcule : ${a} + ${b}`, a: (a+b).toString(), exp: `${a} + ${b} = ${a+b}`, type: 'math' });
+                }
+                nextQuestion();
+            }
+            else if(phaseNum === 3) { // 3. PLUME
+                dailyData.plume.forEach(p => {
+                    state.questionsQueue.push({ q: `Corrige la faute : "${p.phrase}"<br><br><span style="font-size:0.9rem; color:var(--text-muted);">Mot erroné : ${p.mot_faux}</span>`, a: p.mot_correct, exp: p.regle });
+                });
+                nextQuestion();
+            }
+            else if(phaseNum === 4) { // 4. MÉMOIRE
+                state.memoryPairs = [...dailyData.memoire];
+                state.screen = 'memory_learn';
+                render();
+            }
+            else {
+                alert(`Séance terminée ! Score : ${state.score}`);
+                state.screen = 'home'; render();
+            }
+        }
+
+        function nextQuestion() {
+            if(state.questionsQueue.length === 0) { startPhase(state.sessionPhase + 1); return; }
+            state.currentQ = state.questionsQueue.shift();
+            state.feedback = null;
+            render();
+        }
+
+        function renderSession(container) {
+            const pTitle = ["", "1. Culture Générale", "2. Défi Mathématique", "3. La Plume", "4. Consolidation"][state.sessionPhase];
+            const q = state.currentQ;
+
+            let html = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <button class="btn-secondary" style="padding:6px 12px; font-size:0.8rem; border-radius:8px;" onclick="state.screen='home'; render();">Quitter</button>
+                    <div class="phase-indicator">${pTitle}</div>
+                </div>
+                <div class="question-box">${q.q}</div>
+            `;
+
+            if(state.feedback) {
+                html += `
+                    <div class="feedback-box ${state.feedback.isCorrect ? 'correct' : 'incorrect'}">
+                        <strong>${state.feedback.isCorrect ? '✓ Exact !' : '✗ Faux.'}</strong><br>${q.exp}
+                    </div>
+                    <button class="btn" onclick="nextQuestion()">Continuer</button>
+                `;
+            } else {
+                if(q.type === 'math') {
+                    html += `
+                        <div class="canvas-container">
+                            <div class="canvas-hint">Brouillon (Dessine au doigt, double-tap pour effacer)</div>
+                            <canvas id="math-canvas"></canvas>
+                        </div>
+                    `;
+                }
+                html += `
+                    <form onsubmit="submitAnswer(event)">
+                        <input type="text" id="user-ans" placeholder="Ta réponse..." autocomplete="off" autofocus>
+                        <button type="submit" class="btn">Valider</button>
+                    </form>
+                `;
+            }
+            container.innerHTML = html;
+
+            if(!state.feedback && q.type === 'math') initCanvas();
+            if(!state.feedback && document.getElementById('user-ans')) document.getElementById('user-ans').focus();
+        }
+
+        function submitAnswer(e) {
+            e.preventDefault();
+            const val = document.getElementById('user-ans').value.trim().toLowerCase();
+            const isCorrect = (val === state.currentQ.a.toLowerCase());
+
+            if(isCorrect) state.score += 10;
+            else state.revisionsList.push(state.currentQ); // Ajout J+4
+            
+            state.feedback = { isCorrect };
+            render();
+        }
+
+        // --- MEMORY PHASE ---
+        function renderMemoryLearn(container) {
+            container.innerHTML = `
+                <div class="phase-indicator" style="text-align:center;">4. Consolidation - Mémorisation</div>
+                <p class="subtitle" style="text-align:center;">Mémorise ces faits. Tu devras les retrouver dans un instant.</p>
+                <div style="margin-top: 20px;">
+                    ${state.memoryPairs.map(p => `<div class="memory-pair"><strong>${p.date}</strong> : ${p.fait}</div>`).join('')}
+                </div>
+                <button class="btn" style="margin-top: 20px;" onclick="startMemoryTest()">C'est mémorisé !</button>
+            `;
+        }
+
+        function startMemoryTest() {
+            state.screen = 'session';
+            let testQ = [...state.memoryPairs].sort(() => Math.random() - 0.5);
+            
+            testQ.forEach(p => {
+                state.questionsQueue.push({ q: `En quelle année s'est déroulé : <strong>${p.fait}</strong> ?`, a: p.date, exp: `Rappel : ${p.fait} a eu lieu en ${p.date}.` });
+            });
+
+            if(state.revisionsList.length > 0) {
+                state.questionsQueue.push({ q: "<strong>Mode Révision J+4</strong> : Attention, ce sont tes erreurs passées...", a: "ok", exp: "C'est parti pour l'ancrage durable !" });
+                state.revisionsList.forEach(r => state.questionsQueue.push(r));
+                state.revisionsList = [];
+            }
+            nextQuestion();
+        }
+
+        // --- CANVAS (Brouillon) ---
+        function initCanvas() {
+            const canvas = document.getElementById('math-canvas');
+            if(!canvas) return;
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight;
+            ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+            let painting = false;
+
+            function draw(e) {
+                if(!painting) return;
+                e.preventDefault();
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                ctx.lineTo(clientX - rect.left, clientY - rect.top);
+                ctx.stroke(); ctx.beginPath(); ctx.moveTo(clientX - rect.left, clientY - rect.top);
+            }
+            canvas.addEventListener('mousedown', e => { painting = true; draw(e); });
+            canvas.addEventListener('mouseup', () => { painting = false; ctx.beginPath(); });
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('touchstart', e => { painting = true; draw(e); }, {passive: false});
+            canvas.addEventListener('touchend', () => { painting = false; ctx.beginPath(); });
+            canvas.addEventListener('touchmove', draw, {passive: false});
+
+            let lastTap = 0;
+            canvas.addEventListener('touchend', function(e) {
+                let tapLength = new Date().getTime() - lastTap;
+                if(tapLength < 500 && tapLength > 0) { ctx.clearRect(0, 0, canvas.width, canvas.height); e.preventDefault(); }
+                lastTap = new Date().getTime();
+            });
+        }
+
+        loadDailyData();
+    </script>
+</body>
+</html>
